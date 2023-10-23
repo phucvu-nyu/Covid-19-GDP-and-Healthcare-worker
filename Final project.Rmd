@@ -1,0 +1,371 @@
+---
+title: "Final Project"
+author: "Phuc Quang Vu pqv9968"
+date: "2023-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+# {.tabset .tabset-pills}
+## 1.Introduction 
+
+Covid-19 had hit the US terribly and cost the US over 1.1 million citizens. Nevertheless, each state has been affected differently. This project aims to answer if GDP per capita and the ratio of people per healthcare worker of each state are associated with how Covid-19 spread among states.
+
+To answer this question, this project looks at the incidence and mortality rate of Covid-19 in each state with different GDP per capita and the ratio of people per healthcare worker.
+
+More specifically, the total of cases and deaths will be aggregated by each state for each month. Information regarding GDP per capita and the ratio of people per healthcare worker will be collected from public data sets. Finally, data will be joined via state name and transformed for data visualizations. From the data visualizations, readers can determine if there is any association between the mentioned factors and the incidence of Covid 19.
+
+## 2.Packages Required
+```{r}
+library(tidyverse)        # creating tidy data
+library(dplyr)            # transforming data
+library(ggplot2)          # data visualization
+library(lubridate)        # group date by month, year
+
+```
+
+## 3.Data Preparation {.tabset .tabset-pills}
+
+### 3.1.Details of data for this project {.tabset .tabset-pills}
+
+#### 3.1.1.us_states data: 
+Citation: The New York Times. (2021). Coronavirus (Covid-19) Data in the United States. 
+
+Source: <https://github.com/nytimes/covid-19-data.>
+
+Variables: date, state, fips, cases, deaths
+
+Details: number of Covid-19 cases and deaths by Covid-19 by state by date collected and published by NY Times
+
+#### 3.1.2.us_people_per_hospital
+
+Citation: Number of hospitals and hospital employment in each state in 2019.: The Economics Daily: U.S. Bureau of Labor Statistics. (2020, April 6)
+
+Source: <https://www.bls.gov/opub/ted/2020/number-of-hospitals-and-hospital-employment-in-each-state-in-2019.htm>
+
+Variables: state, ratio of people per hospital, Hospital establishment in 2019, Population on July 1, 2019
+
+Details: number of ratio of people per hospital, Hospital establishment, Population by state in 2019 published by Bureau of Labor Statistics
+
+#### 3.1.3.us_gdp_by_state
+
+Citation: US Department of Commerce, BEA, Bureau of Economic Analysis. (n.d.). BEA.: Regional Economic Accounts: Download.
+
+Source: <https://apps.bea.gov/regional/downloadzip.cfm>
+
+Variables: GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit, GDP by Year
+
+Details: GDP by states from 1997 to 2020 published by Bureau of Economic Analysis
+
+#### 3.1.4.us_health_care_by_state
+
+Citation: Tables Created by BLS.:  U.S. Bureau of Labor Statistics. (2022, December 19).
+
+Sources: <https://www.bls.gov/oes/tables.htm>
+
+Variables: state, number_of_healthcare_worker
+
+Details: number of healthcare worker by state in 2019 collected by bureau of Labor Statistics
+
+#### 3.1.5.us_pop
+
+Citation: US Census Bureau. (2021, October 28). 2019 National and State Population Estimates. Census.gov.
+
+Sources: <https://www.census.gov/newsroom/press-kits/2019/national-state-estimates.html>
+
+Variables: state, population by years
+
+Details: US population by state from 2010 to 2019
+
+### 3.2.Loading data
+```{r}
+us_states=read_csv("us-states.csv")
+us_gdp_by_state=read_csv("us_gdp_by_state.csv")
+us_health_care_by_state=read_csv("us_healthcare_worker_2019.csv")
+us_pop<-read_csv("us_pop.csv")
+```
+
+
+### 3.3.Clean data {.tabset .tabset-pills}
+
+#### 3.3.1.us_states
+
+```{r}
+summary(us_states)
+sum(is.na(us_states))
+sum(duplicated(us_states))
+# choosing necessary variables for analysis
+us_states<- us_states %>%
+  select(date, state,cases,deaths)
+```
+Since there is no NA, no duplicate and the values of cases and deaths lie in reasonable range( greater than 0), there is not much need for data cleaning besides choosing variables that are necessary for analysis.
+
+
+
+#### 3.3.2.us_gdp_by_state
+
+The us_gdp_by_state table have data regarding multiple types of GDP and years but this project only focus on total GDP by state in 2009, therefore first project need to select from the table variables GeoName (state), Description (type of GDP), Unit(unit of GDP), and 2009 (the GDP value in 2009)
+```{r}
+us_gdp_by_state<- us_gdp_by_state%>%
+  select(GeoName,Description,Unit,"2019")
+```
+
+```{r}
+# checking for NA values
+sum(is.na(unique(us_gdp_by_state$GeoName)))
+sum(is.na(unique(us_gdp_by_state$Description)))
+unique(us_gdp_by_state$Description)
+```
+
+Taking a quick look at GeoName and Description variables, we found NA in both variables. Furthermore,we only need "Real GDP (millions of chained 2012 dollars)", so we drop NA values and filter the table to display only Real GDP
+
+```{r}
+us_gdp_by_state<- us_gdp_by_state%>%
+  drop_na()%>%
+  filter(Description=="Real GDP (millions of chained 2012 dollars)")
+head(us_gdp_by_state)
+```
+
+We then change the name of variables to assist further coding and reselect variables that are important for the study (GeoName and 2019)
+
+```{r}
+colnames(us_gdp_by_state)<-c("state","description","unit","GDP")
+us_gdp_by_state<- us_gdp_by_state%>%
+  select(state,GDP)
+head(us_gdp_by_state)
+```
+
+#### 3.3.3.us_health_care_by_state
+
+```{r}
+# checking for na and duplicate values
+summary(us_health_care_by_state)
+sum(is.na(us_health_care_by_state))
+sum(duplicated(us_health_care_by_state))
+head(us_health_care_by_state)
+```
+
+The table has no duplicate, NA and is already clean.
+
+#### 3.3.4.us_pop
+
+Since the table have the population of US by state from 2010 to 2019, for this project, I first select variable state and 2019, then rename them for futher analysis
+```{r}
+us_pop<-us_pop%>%
+  select(state,"2019")
+colnames(us_pop)<-c("state","population")
+head(us_pop)
+```
+
+After selection, I check the summary, NA, and duplicate in the table
+
+```{r}
+#checking for NA, duplicates and review summary
+summary(us_pop)
+sum(is.na(us_pop))
+sum(duplicated(us_pop))
+head(us_pop)
+```
+The table has no duplicate, NA and is already clean.
+
+#### 3.3.5.cleaned_data
+
+For the final step, I join data sets that I have cleaned by variable state and drop rows with NA value
+
+```{r}
+# joining tables through columns state 
+cleaned_data<- us_states%>%
+  left_join(us_gdp_by_state,by = "state")%>%
+  left_join(us_health_care_by_state,by="state")%>%
+  left_join(us_pop,by="state")%>%
+  drop_na() # remove NA values
+dim(cleaned_data)
+head(cleaned_data)
+```
+
+## 4.Exploratory Data Analysis {.tabset .tabset-pills}
+
+### 4.1.Calculate required variables 
+```{r}
+data_pre_analyze<- cleaned_data%>%
+  #extract month from date
+  mutate(month = lubridate::floor_date(date, "month"),
+         #calculate incidence per million
+         cases_per_mil=cases/population*1e6, 
+         #calculate mortality per million
+         death_per_mil=deaths/population*1e6,
+         #calculate ratio of people per healthcare worker
+         people_per_healthcare_worker=population/number_of_healthcare_worker,
+         #calculate GDP per capita
+         GDP_percapita=GDP/population*1e6)%>%
+  # Selecting variables that are necessary for analysis
+  select(state,
+         cases,
+         deaths,
+         people_per_healthcare_worker,
+         month,
+         cases_per_mil,death_per_mil,
+         GDP_percapita,
+         population)
+# Group data to view data at begining of each month
+data_analyze<- data_pre_analyze%>%
+  group_by(state,month)%>%
+  summarize(cases_per_mil=max(cases_per_mil),
+            death_per_mil=max(death_per_mil),
+            people_per_healthcare_worker=max(people_per_healthcare_worker),
+            GDP_percapita=max(GDP_percapita))%>%
+  ungroup()%>%
+  mutate(ratio_death_vs_case=death_per_mil/cases_per_mil)
+head(data_analyze)
+dim(data_analyze)
+```
+
+### 4.2.GDP per capita  {.tabset .tabset-pills}
+
+First, the GDP per capita column is categorized into 4 categories (first quartile: <25 quantile, second quartile: 25-50 quantile, third quartile: 50-75 quantile,and Fourth quartile: >75 quantile)
+```{r}
+# Factor GDP_percapita to quantile
+data_analyze$GDP_quantile=cut(data_analyze$GDP_percapita,
+c(-Inf,quantile(unique(data_analyze$GDP_percapita),c(0.25,0.5,0.75,1))),
+labels=c("First quartile GDP","Second quartile GDP","Third quartile GDP","Fourth quartile GDP"))
+```
+
+#### 4.2.1.GDP per capita vs cases
+
+```{r}
+df_GDP<- data_analyze%>%
+  group_by(GDP_quantile,month)%>%
+  #calculate average incidence and mortality for each group
+  summarize(average_incidence_per_mil=round(mean(cases_per_mil),2),
+            average_deaths_per_mil=round(mean(death_per_mil),2))%>%
+  ungroup()
+# display table
+knitr::kable(df_GDP %>%
+               select(month,GDP_quantile,average_incidence_per_mil)%>%
+  pivot_wider(names_from=GDP_quantile,
+              values_from = average_incidence_per_mil),
+              digit=6)
+```
+
+From the table, It appears that the fourth quantile (the highest GDP per capita) states have a high incidence rate at the first 6 months but this trend quickly disappeared after this time.
+
+Then, we use lineplot to see how Covid-19 Incidence advanced in each category
+
+```{r}
+ggplot()+geom_line(data=df_GDP,
+                   mapping=aes(x=month,
+                            y=average_incidence_per_mil,
+                            group=GDP_quantile,
+                            color=GDP_quantile))+ 
+  scale_y_continuous(name="Average Covid-19 incidence per million",
+                     labels = scales::comma)+
+  ggtitle("Average Covid-19 incidence by month by GDP per capita")+
+  labs(color="Quantile of GDP")
+```
+
+We can see that all four categories appear to follow the same pattern. 
+
+#### 4.2.2.GDP per capita vs deaths
+
+Now, let us examine the relationship between  GDP per capita and Covid-19 mortality
+
+```{r}
+ggplot()+geom_line(data=df_GDP,mapping=aes(x=month,
+                                           y=average_deaths_per_mil,
+                                           group=GDP_quantile,
+                                           color=GDP_quantile))+
+  ggtitle("Average Covid-19 mortality per million by month by GDP per capita")+
+  ylab("Average Covid-19 mortality per million")+
+  labs(color="Quantile of GDP")
+```
+
+For the first year, the states with the highest GDP_per_capita have the highest mortality per million. This can possibly be due to the high incidence rate and lack of treatments at the time. However, in the end, states with high GDP have lower mortality rates compared with states with low GDP. 
+
+Conclusion: There is not a clear association between GDP per capita and Covid-19 incidence rate but there seem to be a clear association between GDP per capita and Covid-19 mortality rate.
+
+### 4.3.Ratio of people per healthcare worker  {.tabset .tabset-pills}
+
+First the ratio between population and healthcare worker variable is categorized into 4 categories (first quartile: <25 quantile, second quartile: 25-50 quantile, third quartile: 50-75 quantile,and Fourth quartile: >75 quantile)
+```{r}
+# Factor people_per_healthcare_worker to quantile
+data_analyze$health_worker_quantile=cut(data_analyze$people_per_healthcare_worker,
+       c(-Inf,quantile(unique(data_analyze$people_per_healthcare_worker),
+c(0.25,0.5,0.75,1))),labels=c("First quartile health worker",
+"Second quartile health worker","Third quartile health worker",
+                                                                                                            "Fourth quartile health worker"))
+```
+
+#### 4.3.1.Ratio of people per healthcare worker vs cases
+```{r}
+df_worker<- data_analyze%>%
+  group_by(health_worker_quantile,month)%>%
+  summarize(average_incidence_per_mil=round(mean(cases_per_mil),2),
+            average_deaths_per_mil=round(mean(death_per_mil),2))%>%
+  ungroup()
+
+knitr::kable(df_worker %>%
+               select(month,health_worker_quantile,average_incidence_per_mil)%>%
+  pivot_wider(names_from=health_worker_quantile,
+              values_from = average_incidence_per_mil),
+              digit=6)
+```
+
+Then, we use lineplot to see how Covid-19 Incidence advanced in each category
+
+```{r}
+ggplot()+geom_line(data=df_worker,mapping=aes(x=month,
+                                              y=average_incidence_per_mil,
+                                              group=health_worker_quantile,
+                                              color=health_worker_quantile))+ 
+  scale_y_continuous(name="Average Covid-19 incidence per million", labels = scales::comma)+
+  ggtitle("Average Covid-19 incidence by month by ratio between population and healthcare worker")+
+  labs(color="Quantile of ratio of population \n per healthcare worker")
+```
+
+We can see that all four categories appear to follow the same pattern. 
+
+#### 4.3.2.Ratio of people per healthcare worker vs deaths
+
+Now, let us examine the relationship between  GDP per capita and Covid-19 mortality
+
+```{r}
+ggplot()+geom_line(data=df_worker,mapping=aes(x=month,
+                                              y=average_deaths_per_mil,
+                                              group=health_worker_quantile,
+                                              color=health_worker_quantile))+
+  ggtitle("Average Covid-19 mortality per million by ratio of people per healthcare worker")+
+  ylab("Average Covid-19 mortality per million")+
+  labs(color="Quantile of ratio of  people \n per healthcare worker")
+```
+
+States with low ratio of people per healthcare workers have lower mortality rate compare to states with high ratio of people per healthcare workers. 
+
+Conclusion: The ratio of people per healthcare workers is not associated with high Covid-19 incidence rate but there is a negative association between The ratio of people per healthcare and the Covid-19 mortality rate.
+
+### 4.4.Relationship between GDP per capita and ratio of people per healthcare worker
+
+```{r}
+
+new_data<-data_analyze[!duplicated(data_analyze$state),1:9]
+
+GDP_healthcare<- table(new_data$GDP_quantile,
+                       new_data$health_worker_quantile)
+knitr::kable(GDP_healthcare)
+```
+
+From the summary, we can see that there is a possible relationship between GDP per capita and the ratio of people per healthcare worker. Specifically, we have neither states with low GPD (first quartile) and a low ratio of people per healthcare worker (first quartile) nor states with high GDP(fourth quartile) and a high ratio of people per healthcare worker (fourth quartile).  Another interesting point is that third-quartile GDP states are also more likely to have the lowest ratio of people per healthcare worker (7 states). This could also explain why third-quartile GDP states performed better than Fourth quartile GDP states.
+
+## 5.Summary
+
+The project aims to find out how GDP per capita and the ratio of people per healthcare worker affect how Covid-19 advanced in each state.
+
+We then use a line plot to display how Covid-19 Incidence and Covid-19 Mortality change over time for states with different ranges of GDP and the ratio of people per healthcare worker. 
+
+Overall, the difference between GDP per capita and the ratio of people per healthcare worker appears to have an association with how Covid-19 spread but on Covid-19 mortality. Specifically, states with the lowest GDP per capita have the highest average Covid-19 mortality while states with relatively high GDP per capita (Third quartile) have the lowest average Covid-19 mortality. In addition, states with the highest ratio of people per healthcare worker also have the highest Covid-19 mortality. It is also worth noticing that Third quartile GDP per capita states are the most likely to be the ones with the lowest ratio of people per healthcare worker(first quartile).
+
+These findings could mean that states with a low ratio of people per healthcare worker are more prepared to fight against Covid-19 and legislators may want to conduct more research to understand the mechanism behind this.
+
+However, the project did not consider other health relating factors including spending on the health of a state, the ratio of people per doctor, the ratio of people per nurse, etc. Since a high GDP per capita does not necessarily mean high spending on health, further studies can take a deeper look at how states spending on health affect Covid-19 mortality.
+
